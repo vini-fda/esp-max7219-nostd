@@ -10,7 +10,7 @@ This is `no-std` crate to make `max7219 LED Matrix Display` work with multiple E
 esp-max7219-nostd = { version = "0.1.0", git = "https://github.com/playfulFence/esp-max7219-nostd" }
 ```
 
-## Usage example (on ESP32-C3 for example)
+## Usage example (ESP32-C3)
 ```rust
 #![no_std]
 #![no_main]
