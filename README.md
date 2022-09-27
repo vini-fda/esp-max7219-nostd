@@ -85,12 +85,12 @@ fn main() -> ! {
     let cs = io.pins.gpio3.into_push_pull_output();
     let clk = io.pins.gpio6.into_push_pull_output();
 
-    let mut display = MAX7219::from_pins(1, din, cs, clk).unwrap();
+    let mut display = MAX7219::from_pins(1, din, cs, clk).unwrap(); // replace "1" with number of displays in chain, if you have more
     prepare_display(&mut display, 1, 0x5);
     show_moving_text_in_loop(
         &mut display, 
         "Hello, Espressif",
-        1, 
+        1, // replace "1" with number of displays in chain, if you have more
         30, 
         2, 
         &mut delay,
