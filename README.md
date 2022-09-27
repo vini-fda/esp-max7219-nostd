@@ -1,59 +1,103 @@
-# Util library for MAX7219-powered LED matrix displays written in Rust for Linux (Raspberry Pi).
+# ESP-MAX7219-NOSTD :crab:
 
-This is a `no_std` utility library on top of `max7219`-crate that allows you to easily display
-text on dot matrix displays. **The main purpose of this lib is educational. There aren't mappings for all chars yet!** 
-Feel free to contribute on [Github](https://github.com/phip1611/max-7219-led-matrix-util)!
+This crate is created on basis of [Philipp Schuster's](https://github.com/phip1611/max-7219-led-matrix-util) crate.
 
-## `no_std` support vs usage on Raspberry Pi
-By default, this crate requires `std` and provide easy setup functions using `gpio_cdev`-crate on Raspberry Pi for example.
-If you need `no_std`, disable the default features.
+## Description
+This is `no-std` crate to make `max7219 LED Matrix Display` work with multiple Espressif Chips and do some basic operations (new features will be added over time). 
 #### Cargo.toml
 ```toml
 [dependencies]
-max-7219-led-matrix-util = "<latest-version>"
-# or if you need `no_std`
-max-7219-led-matrix-util = { version = "<latest-version>", default-features = false }
+esp-max7219-nostd = "0.1.0"
 ```
 
-![demo](demo.gif)
-
-## Usage example (`std`)
+## Usage example (on ESP32-C3 for example)
 ```rust
-use max_7219_led_matrix_util::setup_adapter;
-use max_7219_led_matrix_util::{prepare_display, show_moving_text_in_loop};
+#![no_std]
+#![no_main]
 
-const NUM_DISPLAYS: usize = 4;
+use esp32c3_hal::{
+    adc::{AdcConfig, Attenuation, ADC, ADC1},
+    clock::ClockControl,
+    pac::Peripherals,
+    gpio_types::*,
+    gpio::*,
+    prelude::*,
+    spi,
+    timer::TimerGroup,
+    Rtc,
+    IO,
+    Delay,
+};
 
-fn main() {
-    println!("Demo for the 4-display device by AzDelivery. This is the device in the gif in the README.md.");
-    println!();
-    println!(
-        "Provide 3 pins (gpio pin nums) please and connect all to the device: <data> <cs> <clk>"
-    );
-    println!("for example: '12 16 21'");
-    println!();
+use max7219::connectors::PinConnector;
+use max7219::MAX7219;
+use max7219::DecodeMode;
 
-    let args: Vec<String> = std::env::args().collect();
-    assert_eq!(args.len(), 4, "Provide three args!");
+use esp_max7219_nostd::{prepare_display, show_moving_text_in_loop};
 
-    let data_pin = args[1].parse::<u32>().unwrap();
-    let cs_pin = args[2].parse::<u32>().unwrap();
-    let clk_pin = args[3].parse::<u32>().unwrap();
+use riscv_rt::entry; // for C3 chip
+use esp_backtrace as _;
 
-    println!("data={}, cs={}, clk={}", data_pin, cs_pin, clk_pin);
+extern crate alloc;
+#[global_allocator]  // necessary for correct work of alloc on ESP chips
+static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
 
-    // display adapter (std-feature, doesn't work in no_std)
-    let mut display = setup_adapter("/dev/gpiochip0", NUM_DISPLAYS, data_pin, cs_pin, clk_pin);
-    prepare_display(&mut display, NUM_DISPLAYS, 0x0F);
+fn init_heap() {
+    const HEAP_SIZE: usize = 32 * 1024;
+
+    extern "C" {
+        static mut _heap_start: u32;
+    }
+
+    unsafe {
+        let heap_start = &_heap_start as *const _ as usize;
+        ALLOCATOR.init(heap_start as *mut u8, HEAP_SIZE);
+    }
+}
+
+#[entry]
+fn main() -> ! {
+    init_heap(); // for correct allocation
+    let peripherals = Peripherals::take().unwrap();
+
+    let mut system = peripherals.SYSTEM.split();
+
+    let mut clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+
+    // Disable the RTC and TIMG watchdog timers
+    let mut rtc = Rtc::new(peripherals.RTC_CNTL);
+    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    let mut wdt0 = timer_group0.wdt;
+    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
+    let mut wdt1 = timer_group1.wdt;
+    
+    rtc.rwdt.disable();
+    wdt0.disable();
+    wdt1.disable();
+
+
+    // println!("About to initialize the SPI LED driver ILI9341");
+    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    
+    let mut delay = Delay::new(&clocks);
+
+    let din = io.pins.gpio7.into_push_pull_output();
+    let cs = io.pins.gpio3.into_push_pull_output();
+    let clk = io.pins.gpio6.into_push_pull_output();
+
+    let mut display = MAX7219::from_pins(1, din, cs, clk).unwrap();
+    prepare_display(&mut display, 1, 0x5);
     show_moving_text_in_loop(
-        &mut display,
-        "HELLO 01 ABCDEF MAPA   ",
-        NUM_DISPLAYS,
-        // ms for each animation step
-        50,
-        // max_gap_width
-        2
+        &mut display, 
+        "Hello, Espressif",
+        1, 
+        30, 
+        2, 
+        &mut delay,
     );
+    loop {
+
+    }
 }
 ```
 

@@ -9,16 +9,17 @@
 extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
-#[cfg(feature = "std")]
-use crate::setup::Max7219;
-
-#[cfg(feature = "std")]
-use std::{thread::sleep, time::Duration};
+use max7219::connectors::Connector;
 
 use crate::encoding::encode_string;
 use crate::mappings::SingleDisplayData;
+
+use max7219::connectors::PinConnector;
+use max7219::MAX7219;
 use max7219::DecodeMode;
+
+use esp_hal_common::Delay;
+use esp_hal_common::prelude::_embedded_hal_blocking_delay_DelayMs;
 
 /// We use 8x8 square matrices (per single display)
 pub const LED_SQUARE_MATRIX_DIM: usize = 8;
@@ -28,10 +29,6 @@ pub const MAX_DISPLAYS: usize = 16;
 
 pub mod encoding;
 pub mod mappings;
-#[cfg(feature = "std")]
-mod setup;
-#[cfg(feature = "std")]
-pub use setup::{setup as setup_adapter, Max7219 as Max7219Adapter};
 
 /// Shift all row bits one to the left (to the next col). This way you can animate a moving text.
 ///
@@ -75,10 +72,13 @@ pub fn shift_all_rows_one_bit_left(moving_bits: &mut [SingleDisplayData], /*, re
 /// * `display` - mutable reference to Max7219 display driver
 /// * `display_count` - count of displays connected to the MAX7219
 /// * `intensity` - brightness for the display; value between `0x00` and `0x0F`
-#[cfg(feature = "std")]
-pub fn prepare_display(display: &mut Max7219, display_count: usize, intensity: u8) {
+/// 
+pub fn prepare_display<T>(
+    display: &mut MAX7219<T>,
+    display_count: usize,
+    intensity: u8
+) where T:Connector {
     let display_count = display_count % MAX_DISPLAYS;
-
     display.power_on().unwrap();
     for i in 0..display_count {
         display.set_decode_mode(i, DecodeMode::NoDecode).unwrap();
@@ -88,21 +88,23 @@ pub fn prepare_display(display: &mut Max7219, display_count: usize, intensity: u
 }
 
 /// Shows a moving text in loop. After each iteration all bits are shifted one col to the left.
-/// **Make sure to call `prepare_display()` first!**
+/// ** Make sure to call `prepare_display()` first! **
 ///
 /// * `display` - mutable reference to Max7219 display driver
 /// * `text` - the text to display
 /// * `display_count` - count of displays connected to the MAX7219
 /// * `ms_sleep` - timeout after each iteration
 /// * `max_gap_width` - set's the maximum width/count of empty cols between characters. Recommended is 2. 0 to deactivate.
-#[cfg(feature = "std")]
-pub fn show_moving_text_in_loop(
-    display: &mut Max7219,
+/// 
+pub fn show_moving_text_in_loop<T>(
+    display: &mut MAX7219<T>,
     text: &str,
     display_count: usize,
-    ms_sleep: u64,
+    ms_sleep: u32,
     max_gap_width: usize,
-) {
+    delay : &mut Delay
+)
+where T:Connector {
     let display_count = display_count % MAX_DISPLAYS;
 
     let raw_bits = encode_string(text);
@@ -112,13 +114,11 @@ pub fn show_moving_text_in_loop(
     } else {
         display_bits = raw_bits;
     }
-
     loop {
         for i in 0..display_count {
             display.write_raw(i, &display_bits[i]).unwrap();
         }
-
-        sleep(Duration::from_millis(ms_sleep));
+        delay.delay_ms(ms_sleep);
         // shift all rows one bit to the left
         shift_all_rows_one_bit_left(&mut display_bits);
     }
@@ -243,124 +243,4 @@ pub fn transpose_single_display_data(data: SingleDisplayData) -> SingleDisplayDa
         transposed_data[col_i] = col;
     }
     transposed_data
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_move_all_bits_one_col_left() {
-        let data_dis_0 = [
-            0b01000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
-            0b00000000,
-        ];
-        let data_dis_1 = [
-            0b11000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
-            0b00000000,
-        ];
-        let mut data = Vec::new();
-        data.push(data_dis_0);
-        data.push(data_dis_1);
-
-        shift_all_rows_one_bit_left(&mut data);
-
-        let first_row_dis_0_expected = 0b10000001;
-        let first_row_dis_1_expected = 0b10000000;
-        let first_row_dis_0_actual = data[0][0];
-        let first_row_dis_1_actual = data[1][0];
-
-        assert_eq!(first_row_dis_0_actual, first_row_dis_0_expected);
-        assert_eq!(first_row_dis_1_actual, first_row_dis_1_expected);
-    }
-
-    #[test]
-    fn test_transpose_single_display_data() {
-        let input = [
-            0b0100_0000,
-            0b0100_0000,
-            0b0100_0000,
-            0b0100_0000,
-            0b0000_0011,
-            0b0000_0011,
-            0b0000_0011,
-            0b0000_0011,
-        ];
-        let expected = [
-            0b0000_0000,
-            0b1111_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_1111,
-            0b0000_1111,
-        ];
-
-        let actual = transpose_single_display_data( input);
-
-        for i in 0..input.len() {
-            assert_eq!(
-                actual[i], expected[i],
-                "swap_cols_to_rows() doesn't transposed the matrix properly at index {}! is={:#b}, expected={:#b}",
-                i, actual[i], expected[i]
-            );
-        }
-    }
-
-
-
-    #[test]
-    fn test_remove_gaps_in_display_text() {
-        let vec = vec![
-            [
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-            ],
-            [
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-               0b10000000,
-           ]
-        ];
-        let expected = vec![
-            [
-                0b10010000,
-                0b10010000,
-                0b10010000,
-                0b10010000,
-                0b10010000,
-                0b10010000,
-                0b10010000,
-                0b10010000,
-            ],[
-                // TODO remove last if only empty?!
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ]
-        ];
-        let actual = remove_gaps_in_display_text(&vec, 2);
-        for i in 0..2 {
-            for j in 0..8 {
-                assert_eq!(actual[i][j], expected[i][j], "expected: {:#b}, is: {:#b}", expected[i][j], vec[i][j]);
-            }
-        }
-    }
 }
