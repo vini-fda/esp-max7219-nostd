@@ -7,8 +7,11 @@
 #[cfg(not(feature = "std"))]
 #[cfg_attr(not(feature = "std"), macro_use)]
 extern crate alloc;
+
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use embedded_hal::spi::Error;
+use max7219::DataError;
 use max7219::connectors::Connector;
 
 use crate::encoding::encode_string;
@@ -36,6 +39,7 @@ pub mod mappings;
 ///                 the 8x8 bit data for a single display.
 /// * `repeat` shift 1 bits on the very left to the ending of the vector. Without repeat
 //            the vector will be all zeros after enough iterations.
+
 pub fn shift_all_rows_one_bit_left(moving_bits: &mut [SingleDisplayData], /*, repeat: bool*/) {
     // move all bits to next position
 
@@ -121,6 +125,48 @@ where T:Connector {
         delay.delay_ms(ms_sleep);
         // shift all rows one bit to the left
         shift_all_rows_one_bit_left(&mut display_bits);
+    }
+}
+
+
+/*
+    Draws a point to specified display from chain (if only one display - set 0 at calling) 
+    according to "coordinates" which were set in function call.
+
+    display_actual_state - [u8, 8] array, which contains an actual state of display
+    x - horizontal placement of required point
+    y - vertical placement of required point
+
+*/
+pub fn draw_point<T>(
+    display: &mut MAX7219<T>,
+    addr: usize,
+    display_actual_state: &mut SingleDisplayData,
+    x: usize,                                                          
+    y: usize,
+) where T:Connector {
+    if (x < 1 || x > 8 ) || (y < 1 || y > 8 ) {
+        return;
+    }
+    display_actual_state[y-1] |= (0b00000001 << (8-x));
+
+    display.write_raw(addr, display_actual_state).unwrap();
+}
+
+/* This is kinda dumb solution, but why the hell no? :D 
+    obviously, it just clears the display like a corresponding function from 
+    max7219 crate, but also clears an array with actual state 
+*/
+
+pub fn clear_with_state<T>(
+    display: &mut MAX7219<T>,
+    addr: usize, 
+    display_actual_state: &mut SingleDisplayData,
+) where T:Connector {
+    display.clear_display(addr);
+
+    for i in 0..8 {
+        display_actual_state[i] &= 0;
     }
 }
 
