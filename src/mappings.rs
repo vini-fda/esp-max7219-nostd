@@ -394,6 +394,16 @@ pub const EXCLAMATION_MARK: SingleDisplayData = [
     0,
     0b00010000,
 ];
+pub const QUESTION_MARK: SingleDisplayData = [
+    0b00111000,
+    0b01000100,
+    0b00000100,
+    0b00001000,
+    0b00010000,
+    0b00010000,
+    0,
+    0b00010000,
+];
 pub const COMMA: SingleDisplayData = [
     0,
     0,
