@@ -100,7 +100,3 @@ fn main() -> ! {
     }
 }
 ```
-
-
-### Thanks to
-Thanks to the creators of the `max7219`-crate!
