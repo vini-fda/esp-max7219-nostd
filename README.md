@@ -5,7 +5,8 @@ This crate is created on basis of [Philipp Schuster's](https://github.com/phip16
 ## Description
 This is `no-std` crate to make `max7219 LED Matrix Display` work with multiple Espressif Chips and do some basic operations (new features will be added over time). 
 
-![esp32_max7219_wokwi_simulation](https://user-images.githubusercontent.com/62840029/196229850-19edabe5-a914-4a90-b7ee-f3f2e8e5aa17.gif)
+
+![esp32_max7219_wokwi_simulation](https://user-images.githubusercontent.com/62840029/196230704-cbe82bc8-a60a-4049-bbac-601cbe5e6e4b.gif)
 
 
 #### Cargo.toml
