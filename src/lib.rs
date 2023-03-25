@@ -148,7 +148,7 @@ pub fn draw_point<T>(
     if (x < 1 || x > 8 ) || (y < 1 || y > 8 ) {
         return;
     }
-    display_actual_state[y-1] |= (0b00000001 << (8-x));
+    display_actual_state[y-1] |= 0b00000001 << (8-x);
 
     display.write_raw(addr, display_actual_state).unwrap();
 }
